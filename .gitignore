@@ -1,3 +1,4 @@
 .vscode/*
 *.pdf
 grabcut_output.png
+__pycache__/
