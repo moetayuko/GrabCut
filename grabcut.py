@@ -32,7 +32,7 @@ import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
 import igraph as ig
-from sklearn.mixture import GaussianMixture
+from GMM import GaussianMixture
 
 
 BLUE = [255, 0, 0]        # rectangle color
@@ -123,6 +123,7 @@ class GrabCut:
 
         self.bgd_gmm = None
         self.fgd_gmm = None
+        self.comp_idxs = np.empty((self.rows, self.cols), dtype=np.int32)
 
         self.gc_graph = None
         self.gc_graph_capacity = None
@@ -170,9 +171,36 @@ class GrabCut:
         assert bgd_indexes[0].size > 0
         assert fgd_indexes[0].size > 0
 
-        self.bgd_gmm = GaussianMixture(self.gmm_components, warm_start=True)
-        self.fgd_gmm = GaussianMixture(self.gmm_components, warm_start=True)
+        self.bgd_gmm = GaussianMixture(self.img[bgd_indexes])
+        self.bgd_gmm.end_learning()
 
+        self.fgd_gmm = GaussianMixture(self.img[fgd_indexes])
+        self.fgd_gmm.end_learning()
+    
+    def assign_GMMs_components(self):
+        bgd_indexes = np.where(np.logical_or(
+            self.mask == DRAW_BG['val'], self.mask == DRAW_PR_BG['val']))
+        fgd_indexes = np.where(np.logical_or(
+            self.mask == DRAW_FG['val'], self.mask == DRAW_PR_FG['val']))
+        
+        self.comp_idxs[bgd_indexes] = self.bgd_gmm.which_component(self.img[bgd_indexes])
+        self.comp_idxs[fgd_indexes] = self.fgd_gmm.which_component(self.img[fgd_indexes])
+
+    def learn_GMMs(self):
+        bgd_indexes = np.where(np.logical_or(
+            self.mask == DRAW_BG['val'], self.mask == DRAW_PR_BG['val']))
+        fgd_indexes = np.where(np.logical_or(
+            self.mask == DRAW_FG['val'], self.mask == DRAW_PR_FG['val']))
+        
+        self.bgd_gmm.init_learning()
+        self.fgd_gmm.init_learning()
+
+        self.bgd_gmm.add_sample(self.img[bgd_indexes], self.comp_idxs[bgd_indexes])
+        self.fgd_gmm.add_sample(self.img[fgd_indexes], self.comp_idxs[fgd_indexes])
+
+        self.bgd_gmm.end_learning()
+        self.fgd_gmm.end_learning()
+    
     def construct_gc_graph(self):
         bgd_indexes = np.where(self.mask.reshape(-1) == DRAW_BG['val'])
         fgd_indexes = np.where(self.mask.reshape(-1) == DRAW_FG['val'])
@@ -189,15 +217,13 @@ class GrabCut:
         # t-links
         edges.extend(
             list(zip([self.gc_source] * pr_indexes[0].size, pr_indexes[0])))
-        _D = -np.log(np.dot(self.bgd_gmm.predict_proba(
-            self.img.reshape(-1, 3)[pr_indexes]), self.bgd_gmm.weights_))
+        _D = -np.log(self.bgd_gmm.calc_prob(self.img.reshape(-1, 3)[pr_indexes]))
         self.gc_graph_capacity.extend(_D.tolist())
         assert len(edges) == len(self.gc_graph_capacity)
 
         edges.extend(
             list(zip([self.gc_sink] * pr_indexes[0].size, pr_indexes[0])))
-        _D = -np.log(np.dot(self.fgd_gmm.predict_proba(
-            self.img.reshape(-1, 3)[pr_indexes]), self.fgd_gmm.weights_))
+        _D = -np.log(self.fgd_gmm.calc_prob(self.img.reshape(-1, 3)[pr_indexes]))
         self.gc_graph_capacity.extend(_D.tolist())
         assert len(edges) == len(self.gc_graph_capacity)
 
@@ -273,18 +299,10 @@ class GrabCut:
 
     def run(self, num_iters=1):
         for _ in range(num_iters):
-            bgd_indexes = np.where(np.logical_or(
-                self.mask == DRAW_BG['val'], self.mask == DRAW_PR_BG['val']))
-            fgd_indexes = np.where(np.logical_or(
-                self.mask == DRAW_FG['val'], self.mask == DRAW_PR_FG['val']))
-            print(self.img[bgd_indexes].shape)
-            print(self.img[fgd_indexes].shape)
-            self.bgd_gmm = self.bgd_gmm.fit(self.img[bgd_indexes])
-            self.fgd_gmm = self.fgd_gmm.fit(self.img[fgd_indexes])
-
+            self.assign_GMMs_components()
+            self.learn_GMMs()
             self.construct_gc_graph()
             self.estimate_segmentation()
-
 
 if __name__ == '__main__':
 
