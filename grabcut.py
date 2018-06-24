@@ -30,7 +30,6 @@ Key 's' - To save the results
 import sys
 import numpy as np
 import cv2 as cv
-import matplotlib.pyplot as plt
 import igraph as ig
 from GMM import GaussianMixture
 
