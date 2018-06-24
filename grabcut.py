@@ -109,6 +109,7 @@ class GrabCut:
         if rect is not None:
             self.mask[rect[1]:rect[1] + rect[3],
                       rect[0]:rect[0] + rect[2]] = DRAW_PR_FG['val']
+        self.classify_pixels()
 
         # Best number of GMM components K suggested in paper
         self.gmm_components = gmm_components
@@ -122,12 +123,12 @@ class GrabCut:
 
         self.bgd_gmm = None
         self.fgd_gmm = None
-        self.comp_idxs = np.empty((self.rows, self.cols), dtype=np.int32)
+        self.comp_idxs = np.empty((self.rows, self.cols), dtype=np.uint32)
 
         self.gc_graph = None
-        self.gc_graph_capacity = None
+        self.gc_graph_capacity = None           # Edge capacities
         self.gc_source = self.cols * self.rows  # "object" terminal S
-        self.gc_sink = self.gc_source + 1              # "background" terminal T
+        self.gc_sink = self.gc_source + 1       # "background" terminal T
 
         self.calc_beta_smoothness()
         self.init_GMMs()
@@ -161,45 +162,45 @@ class GrabCut:
         self.upright_V[1:, :-1] = self.gamma / np.sqrt(2) * np.exp(-self.beta * np.sum(
             np.square(_upright_diff), axis=2))
 
-    def init_GMMs(self):
-        bgd_indexes = np.where(np.logical_or(
+    def classify_pixels(self):
+        self.bgd_indexes = np.where(np.logical_or(
             self.mask == DRAW_BG['val'], self.mask == DRAW_PR_BG['val']))
-        fgd_indexes = np.where(np.logical_or(
+        self.fgd_indexes = np.where(np.logical_or(
             self.mask == DRAW_FG['val'], self.mask == DRAW_PR_FG['val']))
 
-        assert bgd_indexes[0].size > 0
-        assert fgd_indexes[0].size > 0
+        assert self.bgd_indexes[0].size > 0
+        assert self.fgd_indexes[0].size > 0
 
-        self.bgd_gmm = GaussianMixture(self.img[bgd_indexes])
+        print('(pr_)bgd count: %d, (pr_)fgd count: %d' % (
+            self.bgd_indexes[0].size, self.fgd_indexes[0].size))
+
+    def init_GMMs(self):
+        self.bgd_gmm = GaussianMixture(self.img[self.bgd_indexes])
         self.bgd_gmm.end_learning()
 
-        self.fgd_gmm = GaussianMixture(self.img[fgd_indexes])
+        self.fgd_gmm = GaussianMixture(self.img[self.fgd_indexes])
         self.fgd_gmm.end_learning()
-    
+
     def assign_GMMs_components(self):
-        bgd_indexes = np.where(np.logical_or(
-            self.mask == DRAW_BG['val'], self.mask == DRAW_PR_BG['val']))
-        fgd_indexes = np.where(np.logical_or(
-            self.mask == DRAW_FG['val'], self.mask == DRAW_PR_FG['val']))
-        
-        self.comp_idxs[bgd_indexes] = self.bgd_gmm.which_component(self.img[bgd_indexes])
-        self.comp_idxs[fgd_indexes] = self.fgd_gmm.which_component(self.img[fgd_indexes])
+        """Step 1 in Figure 3: Assign GMM components to pixels"""
+        self.comp_idxs[self.bgd_indexes] = self.bgd_gmm.which_component(
+            self.img[self.bgd_indexes])
+        self.comp_idxs[self.fgd_indexes] = self.fgd_gmm.which_component(
+            self.img[self.fgd_indexes])
 
     def learn_GMMs(self):
-        bgd_indexes = np.where(np.logical_or(
-            self.mask == DRAW_BG['val'], self.mask == DRAW_PR_BG['val']))
-        fgd_indexes = np.where(np.logical_or(
-            self.mask == DRAW_FG['val'], self.mask == DRAW_PR_FG['val']))
-        
+        """Step 2 in Figure 3: Learn GMM parameters from data z"""
         self.bgd_gmm.init_learning()
         self.fgd_gmm.init_learning()
 
-        self.bgd_gmm.add_sample(self.img[bgd_indexes], self.comp_idxs[bgd_indexes])
-        self.fgd_gmm.add_sample(self.img[fgd_indexes], self.comp_idxs[fgd_indexes])
+        self.bgd_gmm.add_sample(
+            self.img[self.bgd_indexes], self.comp_idxs[self.bgd_indexes])
+        self.fgd_gmm.add_sample(
+            self.img[self.fgd_indexes], self.comp_idxs[self.fgd_indexes])
 
         self.bgd_gmm.end_learning()
         self.fgd_gmm.end_learning()
-    
+
     def construct_gc_graph(self):
         bgd_indexes = np.where(self.mask.reshape(-1) == DRAW_BG['val'])
         fgd_indexes = np.where(self.mask.reshape(-1) == DRAW_FG['val'])
@@ -207,8 +208,7 @@ class GrabCut:
             self.mask.reshape(-1) == DRAW_PR_BG['val'], self.mask.reshape(-1) == DRAW_PR_FG['val']))
 
         print('bgd count: %d, fgd count: %d, uncertain count: %d' % (
-            len(bgd_indexes[0]), len(fgd_indexes[0]), len(pr_indexes[0])
-        ))
+            len(bgd_indexes[0]), len(fgd_indexes[0]), len(pr_indexes[0])))
 
         edges = []
         self.gc_graph_capacity = []
@@ -250,7 +250,7 @@ class GrabCut:
 
         # n-links
         img_indexes = np.arange(self.rows * self.cols,
-                                dtype=np.int32).reshape(self.rows, self.cols)
+                                dtype=np.uint32).reshape(self.rows, self.cols)
 
         mask1 = img_indexes[:, 1:].reshape(-1)
         mask2 = img_indexes[:, :-1].reshape(-1)
@@ -285,6 +285,7 @@ class GrabCut:
         self.gc_graph.add_edges(edges)
 
     def estimate_segmentation(self):
+        """Step 3 in Figure 3: Estimate segmentation"""
         mincut = self.gc_graph.st_mincut(
             self.gc_source, self.gc_sink, self.gc_graph_capacity)
         print('foreground pixels: %d, background pixels: %d' % (
@@ -292,9 +293,10 @@ class GrabCut:
         pr_indexes = np.where(np.logical_or(
             self.mask == DRAW_PR_BG['val'], self.mask == DRAW_PR_FG['val']))
         img_indexes = np.arange(self.rows * self.cols,
-                                dtype=np.int32).reshape(self.rows, self.cols)
+                                dtype=np.uint32).reshape(self.rows, self.cols)
         self.mask[pr_indexes] = np.where(np.isin(img_indexes[pr_indexes], mincut.partition[0]),
                                          DRAW_PR_FG['val'], DRAW_PR_BG['val'])
+        self.classify_pixels()
 
     def run(self, num_iters=1):
         for _ in range(num_iters):
@@ -302,6 +304,7 @@ class GrabCut:
             self.learn_GMMs()
             self.construct_gc_graph()
             self.estimate_segmentation()
+
 
 if __name__ == '__main__':
 
