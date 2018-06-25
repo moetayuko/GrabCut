@@ -11,7 +11,6 @@ class GaussianMixture:
 
         self.coefs = np.zeros(self.n_components)
         self.means = np.zeros((self.n_components, self.n_features))
-        self._sums = np.zeros((self.n_components, self.n_features))
         # Full covariance
         self.covariances = np.zeros(
             (self.n_components, self.n_features, self.n_features))
@@ -20,7 +19,7 @@ class GaussianMixture:
 
     def init_with_kmeans(self, X):
         label = KMeans(n_clusters=self.n_components, n_init=1).fit(X).labels_
-        self.add_sample(X, label)
+        self.fit(X, label)
 
     def calc_score(self, X, ci):
         """Predict probabilities of samples belong to component ci
@@ -77,34 +76,29 @@ class GaussianMixture:
         # print(prob)
         return np.argmax(prob, axis=1)
 
-    def add_sample(self, X, labels):
+    def fit(self, X, labels):
         assert self.n_features == X.shape[1]
 
-        self._sums[:] = 0
         self.n_samples[:] = 0
+        self.coefs[:] = 0
 
         uni_labels, count = np.unique(labels, return_counts=True)
-        self.n_samples[uni_labels] += count
+        self.n_samples[uni_labels] = count
 
         variance = 0.01
         for ci in uni_labels:
-            self._sums[ci] += np.sum(X[ci == labels], axis=0)
-            self.covariances[ci] = 0 if self.n_samples[ci] <= 1 else np.cov(X[ci == labels].T)
+            n = self.n_samples[ci]
+
+            self.coefs[ci] = n / np.sum(self.n_samples)
+            self.means[ci] = np.mean(X[ci == labels], axis=0)
+            self.covariances[ci] = 0 if self.n_samples[ci] <= 1 else np.cov(
+                X[ci == labels].T)
 
             det = np.linalg.det(self.covariances[ci])
             if det <= 0:
                 # Adds the white noise to avoid singular covariance matrix.
                 self.covariances[ci] += np.eye(self.n_features) * variance
                 det = np.linalg.det(self.covariances[ci])
-
-    def end_learning(self):
-        for ci in range(self.n_components):
-            n = self.n_samples[ci]
-            if n == 0:
-                self.coefs[ci] = 0
-            else:
-                self.coefs[ci] = n / np.sum(self.n_samples)
-                self.means[ci] = self._sums[ci] / n
 
 
 if __name__ == '__main__':
@@ -119,7 +113,6 @@ if __name__ == '__main__':
     center = np.array([[2.0, 3.0, 4.0], [4.0, 5.0, 6.0]])
 
     gmm = GaussianMixture(xx_list)
-    gmm.end_learning()
     print(gmm.which_component(np.array([[1, 3, 4]])))
 
     # from mpl_toolkits.mplot3d import Axes3D

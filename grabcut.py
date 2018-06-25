@@ -176,10 +176,7 @@ class GrabCut:
 
     def init_GMMs(self):
         self.bgd_gmm = GaussianMixture(self.img[self.bgd_indexes])
-        self.bgd_gmm.end_learning()
-
         self.fgd_gmm = GaussianMixture(self.img[self.fgd_indexes])
-        self.fgd_gmm.end_learning()
 
     def assign_GMMs_components(self):
         """Step 1 in Figure 3: Assign GMM components to pixels"""
@@ -190,13 +187,8 @@ class GrabCut:
 
     def learn_GMMs(self):
         """Step 2 in Figure 3: Learn GMM parameters from data z"""
-        self.bgd_gmm.add_sample(
-            self.img[self.bgd_indexes], self.comp_idxs[self.bgd_indexes])
-        self.fgd_gmm.add_sample(
-            self.img[self.fgd_indexes], self.comp_idxs[self.fgd_indexes])
-
-        self.bgd_gmm.end_learning()
-        self.fgd_gmm.end_learning()
+        self.bgd_gmm.fit(self.img[self.bgd_indexes], self.comp_idxs[self.bgd_indexes])
+        self.fgd_gmm.fit(self.img[self.fgd_indexes], self.comp_idxs[self.fgd_indexes])
 
     def construct_gc_graph(self):
         bgd_indexes = np.where(self.mask.reshape(-1) == DRAW_BG['val'])

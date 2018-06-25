@@ -12,7 +12,7 @@ My implementation of *[Grabcut: Interactive foreground extraction using iterated
 
 ## File desctiptions
 
-* `GMM.py` - Gaussian mixture model, generally based on [OpenCV](https://github.com/opencv/opencv/blob/master/modules/imgproc/src/grabcut.cpp#L57) but reimplemented with numpy.
+* `GMM.py` - Gaussian mixture model
 * `grabcut.py` - Core implementation of the algorithm.
 * `grabcut_opencv.py` - A copy of [the official OpenCV sample](https://github.com/opencv/opencv/blob/master/samples/python/grabcut.py).
 * `messi5.jpg` - A copy of [OpenCV's sample image](https://github.com/opencv/opencv/blob/master/samples/data/messi5.jpg).
