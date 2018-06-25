@@ -15,8 +15,6 @@ class GaussianMixture:
         # Full covariance
         self.covariances = np.zeros(
             (self.n_components, self.n_features, self.n_features))
-        self.prods = np.zeros(
-            (self.n_components, self.n_features, self.n_features))
 
         self.init_with_kmeans(X)
 
@@ -79,27 +77,27 @@ class GaussianMixture:
         # print(prob)
         return np.argmax(prob, axis=1)
 
-    def init_learning(self):
-        self._sums[:] = 0
-        self.prods[:] = 0
-        self.n_samples[:] = 0
-
     def add_sample(self, X, labels):
         assert self.n_features == X.shape[1]
 
-        n_X = X.shape[0]
+        self._sums[:] = 0
+        self.n_samples[:] = 0
 
         uni_labels, count = np.unique(labels, return_counts=True)
         self.n_samples[uni_labels] += count
 
-        prods = np.einsum('nik,nkj->nij', X.reshape(
-            n_X, self.n_features, -1), X.reshape(n_X, -1, self.n_features))
+        variance = 0.01
         for ci in uni_labels:
             self._sums[ci] += np.sum(X[ci == labels], axis=0)
-            self.prods[ci] += np.sum(prods[ci == labels], axis=0)
+            self.covariances[ci] = 0 if self.n_samples[ci] <= 1 else np.cov(X[ci == labels].T)
+
+            det = np.linalg.det(self.covariances[ci])
+            if det <= 0:
+                # Adds the white noise to avoid singular covariance matrix.
+                self.covariances[ci] += np.eye(self.n_features) * variance
+                det = np.linalg.det(self.covariances[ci])
 
     def end_learning(self):
-        variance = 0.01
         for ci in range(self.n_components):
             n = self.n_samples[ci]
             if n == 0:
@@ -107,14 +105,6 @@ class GaussianMixture:
             else:
                 self.coefs[ci] = n / np.sum(self.n_samples)
                 self.means[ci] = self._sums[ci] / n
-                self.covariances[ci] = self.prods[ci] / n - np.dot(
-                    self.means[ci].reshape(-1, 1), self.means[ci].reshape(1, -1))
-
-                det = np.linalg.det(self.covariances[ci])
-                if det <= 0:
-                    # Adds the white noise to avoid singular covariance matrix.
-                    self.covariances[ci] += np.eye(self.n_features) * variance
-                    det = np.linalg.det(self.covariances[ci])
 
 
 if __name__ == '__main__':

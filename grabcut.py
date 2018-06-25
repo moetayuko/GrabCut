@@ -190,9 +190,6 @@ class GrabCut:
 
     def learn_GMMs(self):
         """Step 2 in Figure 3: Learn GMM parameters from data z"""
-        self.bgd_gmm.init_learning()
-        self.fgd_gmm.init_learning()
-
         self.bgd_gmm.add_sample(
             self.img[self.bgd_indexes], self.comp_idxs[self.bgd_indexes])
         self.fgd_gmm.add_sample(
