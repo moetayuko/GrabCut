@@ -291,6 +291,28 @@ class GrabCut:
                                          DRAW_PR_FG['val'], DRAW_PR_BG['val'])
         self.classify_pixels()
 
+    def calc_energy(self):
+        U = 0
+        for ci in range(self.gmm_components):
+            idx = np.where(np.logical_and(self.comp_idxs == ci, np.logical_or(
+                self.mask == DRAW_BG['val'], self.mask == DRAW_PR_BG['val'])))
+            U += np.sum(-np.log(self.bgd_gmm.coefs[ci] * self.bgd_gmm.calc_score(self.img[idx], ci)))
+
+            idx = np.where(np.logical_and(self.comp_idxs == ci, np.logical_or(
+                self.mask == DRAW_FG['val'], self.mask == DRAW_PR_FG['val'])))
+            U += np.sum(-np.log(self.fgd_gmm.coefs[ci] * self.fgd_gmm.calc_score(self.img[idx], ci)))
+
+        V = 0
+        mask = self.mask.copy()
+        mask[np.where(mask == DRAW_PR_BG['val'])] = DRAW_BG['val']
+        mask[np.where(mask == DRAW_PR_FG['val'])] = DRAW_FG['val']
+
+        V += np.sum(self.left_V * (mask[:, 1:] == mask[:, :-1]))
+        V += np.sum(self.upleft_V * (mask[1:, 1:] == mask[:-1, :-1]))
+        V += np.sum(self.up_V * (mask[1:, :] == mask[:-1, :]))
+        V += np.sum(self.upright_V * (mask[1:, :-1] == mask[:-1, 1:]))
+        return U, V, U + V
+
     def run(self, num_iters=1, skip_learn_GMMs=False):
         print('skip learn GMMs:', skip_learn_GMMs)
         for _ in range(num_iters):
@@ -300,6 +322,7 @@ class GrabCut:
             self.construct_gc_graph()
             self.estimate_segmentation()
             skip_learn_GMMs = False
+            # print('data term: %f, smoothness term: %f, total energy: %f' % self.calc_energy())
 
 
 if __name__ == '__main__':
