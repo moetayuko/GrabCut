@@ -118,10 +118,10 @@ class GrabCut:
         self.gamma = 50  # Best gamma suggested in paper formula (5)
         self.beta = 0
 
-        self.left_V = np.zeros((self.rows, self.cols))
-        self.upleft_V = np.zeros((self.rows, self.cols))
-        self.up_V = np.zeros((self.rows, self.cols))
-        self.upright_V = np.zeros((self.rows, self.cols))
+        self.left_V = np.empty((self.rows, self.cols - 1))
+        self.upleft_V = np.empty((self.rows - 1, self.cols - 1))
+        self.up_V = np.empty((self.rows - 1, self.cols))
+        self.upright_V = np.empty((self.rows - 1, self.cols - 1))
 
         self.bgd_gmm = None
         self.fgd_gmm = None
@@ -155,13 +155,13 @@ class GrabCut:
         print('Beta:', self.beta)
 
         # Smoothness term V described in formula (11)
-        self.left_V[:, 1:] = self.gamma * np.exp(-self.beta * np.sum(
+        self.left_V = self.gamma * np.exp(-self.beta * np.sum(
             np.square(_left_diff), axis=2))
-        self.upleft_V[1:, 1:] = self.gamma / np.sqrt(2) * np.exp(-self.beta * np.sum(
+        self.upleft_V = self.gamma / np.sqrt(2) * np.exp(-self.beta * np.sum(
             np.square(_upleft_diff), axis=2))
-        self.up_V[1:, :] = self.gamma * np.exp(-self.beta * np.sum(
+        self.up_V = self.gamma * np.exp(-self.beta * np.sum(
             np.square(_up_diff), axis=2))
-        self.upright_V[1:, :-1] = self.gamma / np.sqrt(2) * np.exp(-self.beta * np.sum(
+        self.upright_V = self.gamma / np.sqrt(2) * np.exp(-self.beta * np.sum(
             np.square(_upright_diff), axis=2))
 
     def classify_pixels(self):
@@ -248,27 +248,27 @@ class GrabCut:
         mask1 = img_indexes[:, 1:].reshape(-1)
         mask2 = img_indexes[:, :-1].reshape(-1)
         edges.extend(list(zip(mask1, mask2)))
-        self.gc_graph_capacity.extend(self.left_V[:, 1:].reshape(-1).tolist())
+        self.gc_graph_capacity.extend(self.left_V.reshape(-1).tolist())
         assert len(edges) == len(self.gc_graph_capacity)
 
         mask1 = img_indexes[1:, 1:].reshape(-1)
         mask2 = img_indexes[:-1, :-1].reshape(-1)
         edges.extend(list(zip(mask1, mask2)))
         self.gc_graph_capacity.extend(
-            self.upleft_V[1:, 1:].reshape(-1).tolist())
+            self.upleft_V.reshape(-1).tolist())
         assert len(edges) == len(self.gc_graph_capacity)
 
         mask1 = img_indexes[1:, :].reshape(-1)
         mask2 = img_indexes[:-1, :].reshape(-1)
         edges.extend(list(zip(mask1, mask2)))
-        self.gc_graph_capacity.extend(self.up_V[1:, :].reshape(-1).tolist())
+        self.gc_graph_capacity.extend(self.up_V.reshape(-1).tolist())
         assert len(edges) == len(self.gc_graph_capacity)
 
         mask1 = img_indexes[1:, :-1].reshape(-1)
         mask2 = img_indexes[:-1, 1:].reshape(-1)
         edges.extend(list(zip(mask1, mask2)))
         self.gc_graph_capacity.extend(
-            self.upright_V[1:, :-1].reshape(-1).tolist())
+            self.upright_V.reshape(-1).tolist())
         assert len(edges) == len(self.gc_graph_capacity)
 
         assert len(edges) == 4 * self.cols * self.rows - 3 * (self.cols + self.rows) + 2 + \
