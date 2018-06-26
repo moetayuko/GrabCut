@@ -53,10 +53,11 @@ rect_over = False       # flag to check if rect drawn
 rect_or_mask = 100      # flag for selecting rect or mask mode
 value = DRAW_FG         # drawing initialized to FG
 thickness = 3           # brush thickness
+skip_learn_GMMs = False # whether to skip learning GMM parameters
 
 
 def onmouse(event, x, y, flags, param):
-    global img, img2, drawing, value, mask, rectangle, rect, rect_or_mask, ix, iy, rect_over
+    global img, img2, drawing, value, mask, rectangle, rect, rect_or_mask, ix, iy, rect_over, skip_learn_GMMs
 
     # Draw Rectangle
     if event == cv.EVENT_RBUTTONDOWN:
@@ -98,6 +99,7 @@ def onmouse(event, x, y, flags, param):
             drawing = False
             cv.circle(img, (x, y), thickness, value['color'], -1)
             cv.circle(mask, (x, y), thickness, value['val'], -1)
+            skip_learn_GMMs = True
 
 
 class GrabCut:
@@ -187,8 +189,10 @@ class GrabCut:
 
     def learn_GMMs(self):
         """Step 2 in Figure 3: Learn GMM parameters from data z"""
-        self.bgd_gmm.fit(self.img[self.bgd_indexes], self.comp_idxs[self.bgd_indexes])
-        self.fgd_gmm.fit(self.img[self.fgd_indexes], self.comp_idxs[self.fgd_indexes])
+        self.bgd_gmm.fit(self.img[self.bgd_indexes],
+                         self.comp_idxs[self.bgd_indexes])
+        self.fgd_gmm.fit(self.img[self.fgd_indexes],
+                         self.comp_idxs[self.fgd_indexes])
 
     def construct_gc_graph(self):
         bgd_indexes = np.where(self.mask.reshape(-1) == DRAW_BG['val'])
@@ -287,12 +291,15 @@ class GrabCut:
                                          DRAW_PR_FG['val'], DRAW_PR_BG['val'])
         self.classify_pixels()
 
-    def run(self, num_iters=1):
+    def run(self, num_iters=1, skip_learn_GMMs=False):
+        print('skip learn GMMs:', skip_learn_GMMs)
         for _ in range(num_iters):
-            self.assign_GMMs_components()
-            self.learn_GMMs()
+            if not skip_learn_GMMs:
+                self.assign_GMMs_components()
+                self.learn_GMMs()
             self.construct_gc_graph()
             self.estimate_segmentation()
+            skip_learn_GMMs = False
 
 
 if __name__ == '__main__':
@@ -367,7 +374,8 @@ if __name__ == '__main__':
                 gc = GrabCut(img2, mask, rect)
                 rect_or_mask = 1
             elif rect_or_mask == 1:         # grabcut with mask
-                gc.run()
+                gc.run(skip_learn_GMMs=skip_learn_GMMs)
+                skip_learn_GMMs = False
 
         mask2 = np.where((mask == 1) + (mask == 3), 255, 0).astype('uint8')
         output = cv.bitwise_and(img2, img2, mask=mask2)
